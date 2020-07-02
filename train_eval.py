@@ -8,8 +8,9 @@ import argparse
 import os
 import cv2
 from torchvision import datasets, models, transforms
-from network.classifier import *
-from network.transform import mesonet_data_transforms
+from Models import Meso4
+from Models import MesoInception4
+from Video_Dataloader import RandomCrop, GeneralVideoDataset
 
 def main():
 	args = parse.parse_args()

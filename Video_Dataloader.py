@@ -6,11 +6,13 @@ from __future__ import print_function, division
 
 import os
 import pickle
+import random
 
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
+from torchvision import transforms
 
 
 class RandomCrop(object):
@@ -50,10 +52,10 @@ class GeneralVideoDataset(Dataset):
         root_dir,
         channels,
         time_depth,
-        x_size,
-        y_size,
-        mean,
-        transform=None,
+        mean, #(a,b,c) eg:(0.485, 0.456, 0.406)
+        std, #(a,b,c) eg:(0.229, 0.224, 0.225)
+        transformflag,
+        transform
     ):
         """
         Args:
@@ -65,6 +67,7 @@ class GeneralVideoDataset(Dataset):
             time_depth: Number of frames to be loaded in a sample
             x_size, y_size: Dimensions of the frames
             mean: Mean value of the training set videos over each channel
+            std: Diviation of each channel
         """
         with open(clips_list_file, "rb") as fp:  # Unpickling
             clips_list_file = pickle.load(fp)
@@ -73,9 +76,9 @@ class GeneralVideoDataset(Dataset):
         self.root_dir = root_dir
         self.channels = channels
         self.time_depth = time_depth
-        self.x_size = x_size
-        self.y_size = y_size
         self.mean = mean
+        self.std = std
+        self.transformflag = transformflag
         self.transform = transform
 
     def __len__(self):
@@ -84,35 +87,37 @@ class GeneralVideoDataset(Dataset):
     def read_video(self, video_file):
         # Open the video file
         cap = cv2.VideoCapture(video_file)
+        suc, frame = cap.read()
+        #print(frame.shape)
         frames = torch.FloatTensor(
-            self.channels, self.time_depth, self.x_size, self.y_size
+            self.channels, self.time_depth, frame.shape[0], frame.shape[1]
         )
         failed_clip = False
         for f in range(self.time_depth):
-
-            ret, frame = cap.read()
-            if ret:
-                frame = torch.from_numpy(frame)
-                # HWC2CHW
-                frame = frame.permute(2, 0, 1)
-                frames[:, f, :, :] = frame
-
+            suc, frame = cap.read()
+            if suc:
+                if transformflag:
+                    frame = self.transform(frame)
+                    frames[:, f, :, :] = frame
+                else:
+                    frame = torch.from_numpy(frame)
+                    # HWC2CHW
+                    frame = frame.permute(2, 0, 1)
+                    frames[:, f, :, :] = frame
             else:
                 print("Skipped!")
                 failed_clip = True
                 break
 
-        for idx in range(len(self.mean)):
-            frames[idx] = (frames[idx] - self.mean[idx]) / self.stddev[idx]
-
         return frames, failed_clip
 
     def __getitem__(self, idx):
-
+        # Shuffle the video list
+        self.clips_list = random.sample(self.clips_list,len(self.clips_list))
         video_file = os.path.join(self.root_dir, self.clips_list[idx][0])
+        print(self.clips_list[idx])
         clip, failed_clip = self.read_video(video_file)
-        if self.transform:
-            clip = self.transform(clip)
+
         sample = {
             "clip": clip,
             "label": self.clips_list[idx][1],
@@ -126,18 +131,27 @@ if __name__ == "__main__":
     root_dir = '../Celeb-DF-v2'
     channels = 3
     time_depth = 50
-    x_size = 500
-    y_size = 888
-    mean = 100
+    mean = (0.485, 0.456, 0.406)
+    std = (0.229, 0.224, 0.225)
+    transformflag = True
+    transform = transforms.Compose([
+    transforms.ToTensor(), # range [0, 255] -> [0.0,1.0]
+    transforms.Normalize(mean, std),
+    ])
+
+    cut_size = 225
+
     DataloaderTest = GeneralVideoDataset(
         clips_list_file,
         root_dir,
         channels,
         time_depth,
-        x_size,
-        y_size,
         mean,
-        transform=None)
+        std,
+        transformflag,
+        transform)
     
+    crop = RandomCrop(cut_size)
     for item in DataloaderTest:
-        print(item)
+        cut_clip = crop(item['clip'])
+        print(cut_clip.shape)
