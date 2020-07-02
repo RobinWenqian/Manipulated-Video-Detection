@@ -54,6 +54,7 @@ class GeneralVideoDataset(Dataset):
         time_depth,
         mean, #(a,b,c) eg:(0.485, 0.456, 0.406)
         std, #(a,b,c) eg:(0.229, 0.224, 0.225)
+        cut_size,
         transformflag,
         transform
     ):
@@ -78,6 +79,7 @@ class GeneralVideoDataset(Dataset):
         self.time_depth = time_depth
         self.mean = mean
         self.std = std
+        self.cut_size = cut_size
         self.transformflag = transformflag
         self.transform = transform
 
@@ -96,7 +98,7 @@ class GeneralVideoDataset(Dataset):
         for f in range(self.time_depth):
             suc, frame = cap.read()
             if suc:
-                if transformflag:
+                if self.transformflag:
                     frame = self.transform(frame)
                     frames[:, f, :, :] = frame
                 else:
@@ -114,17 +116,21 @@ class GeneralVideoDataset(Dataset):
     def __getitem__(self, idx):
         # Shuffle the video list
         self.clips_list = random.sample(self.clips_list,len(self.clips_list))
-        video_file = os.path.join(self.root_dir, self.clips_list[idx][0])
-        print(self.clips_list[idx])
-        clip, failed_clip = self.read_video(video_file)
 
+        video_file = os.path.join(self.root_dir, self.clips_list[idx][0])
+        #print(self.clips_list[idx])
+        clip, failed_clip = self.read_video(video_file)
+        crop = RandomCrop(self.cut_size)
+        clip_cut = crop(clip)
         sample = {
-            "clip": clip,
+            "clip": clip_cut,
             "label": self.clips_list[idx][1],
             "failedClip": failed_clip,
         }
 
-        return sample
+        clip_tuple = (sample['clip'],sample['label'])
+
+        return clip_tuple
 
 if __name__ == "__main__":
     clips_list_file = '../Celeb-DF-v2/List_of_testing_videos.pkl'
