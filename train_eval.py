@@ -8,6 +8,7 @@ import argparse
 import os
 import cv2
 import tqdm
+import numpy as np
 from torchvision import datasets, models, transforms
 from Models import Meso4
 from Models import MesoInception4
@@ -84,8 +85,8 @@ def main():
         transform
         )
 
-    #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=8)
-    #val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=8)
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=8)
+    val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=8)
     train_dataset_size = len(train_set)
     val_dataset_size = len(val_set)
 
@@ -103,9 +104,6 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-	#Train the model using multiple GPUs
-	#model = nn.DataParallel(model)
-
     best_model_wts = model.state_dict()
     best_acc = 0.0
     iteration = 0
@@ -117,9 +115,10 @@ def main():
         train_corrects = 0.0
         val_loss = 0.0
         val_corrects = 0.0
-        for (image, labels) in train_set:
-            print(image.shape)
-            print(labels)
+        for (image,labels,failflag) in train_loader:
+            labels = np.array(labels)
+            labels = torch.from_numpy(labels)
+            #print(labels)
             iter_loss = 0.0
             iter_corrects = 0.0
             if gpu_avi:
@@ -128,6 +127,7 @@ def main():
             optimizer.zero_grad()
             outputs = model(image)
             _, preds = torch.max(outputs.data, 1)
+            #print(preds)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -136,7 +136,7 @@ def main():
             iter_corrects = torch.sum(preds == labels.data).to(torch.float32)
             train_corrects += iter_corrects
             iteration += 1
-            if not (iteration % 20):
+            if not(iteration % 10):
                 print('iteration {} train loss: {:.4f} Acc: {:.4f}'.format(iteration, iter_loss / batch_size, iter_corrects / batch_size))
         epoch_loss = train_loss / train_dataset_size
         epoch_acc = train_corrects / train_dataset_size
@@ -145,7 +145,7 @@ def main():
         #Evaluation
         model.eval()
         with torch.no_grad():
-            for (image, labels) in val_set:
+            for (image, labels) in val_loader:
                 if gpu_avi:
                     image = image.cuda()
                     labels = labels.cuda()
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     parse.add_argument('--train_root','-tr',default = '../Celeb-DF-v2')
     parse.add_argument('--train_path', '-tp' , type=str, default = '../Celeb-DF-v2/List_of_training_videos.pkl')
     parse.add_argument('--val_path', '-vp' , type=str, default = '../Celeb-DF-v2/List_of_testing_videos.pkl')
-    parse.add_argument('--batch_size', '-bz', type=int, default=8)
+    parse.add_argument('--batch_size', '-bz', type=int, default=64)
     parse.add_argument('--epoches', '-e', type=int, default='50')
     parse.add_argument('--model_name', '-mn', type=str, default='meso4.pkl')
     parse.add_argument('--continue_train', type=bool, default=False)

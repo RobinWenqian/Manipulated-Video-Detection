@@ -122,13 +122,17 @@ class GeneralVideoDataset(Dataset):
         clip, failed_clip = self.read_video(video_file)
         crop = RandomCrop(self.cut_size)
         clip_cut = crop(clip)
+
+        clip_cut = torch.mean(clip_cut, 1, keepdim=False, out=None)
+
         sample = {
             "clip": clip_cut,
-            "label": self.clips_list[idx][1],
+            "label": int(self.clips_list[idx][1]),
             "failedClip": failed_clip,
         }
 
-        clip_tuple = (sample['clip'],sample['label'])
+        clip_tuple = (sample['clip'],sample['label'], sample['failedClip'])
+        #print(clip_tuple[0].shape)
 
         return clip_tuple
 
@@ -139,6 +143,7 @@ if __name__ == "__main__":
     time_depth = 50
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
+    cut_size = 225
     transformflag = True
     transform = transforms.Compose([
     transforms.ToTensor(), # range [0, 255] -> [0.0,1.0]
@@ -154,10 +159,15 @@ if __name__ == "__main__":
         time_depth,
         mean,
         std,
+        cut_size,
         transformflag,
         transform)
     
+    for item in DataloaderTest:
+        print(item[0].shape)
+    '''
     crop = RandomCrop(cut_size)
     for item in DataloaderTest:
         cut_clip = crop(item['clip'])
         print(cut_clip.shape)
+    '''
