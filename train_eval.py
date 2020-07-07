@@ -90,9 +90,9 @@ def main():
     train_dataset_size = len(train_set)
     val_dataset_size = len(val_set)
 
-
 	#Creat the model
     model = Meso4()
+    
     if continue_train:
         model.load_state_dict(torch.load(model_path))
     
