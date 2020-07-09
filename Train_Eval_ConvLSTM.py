@@ -10,9 +10,9 @@ import cv2
 import tqdm
 import numpy as np
 from torchvision import datasets, models, transforms
-from Models import Meso4
-from Models import MesoInception4
-from Video_Dataloader import RandomCrop, GeneralVideoDataset
+from torchsummary import summary
+from ConvLSTM_Models import ConvLSTM
+from ConvLSTM_Dataloader import RandomCrop, GeneralVideoDataset
 
 def main():
     args = parse.parse_args()
@@ -56,6 +56,16 @@ def main():
         'transformflag' : True
     }
 
+    ConvLSTM_Config = {
+        'channels' : 3,
+        'hidden_dim' : [128,128,256],
+        'kernel_size' : (3, 3),
+        'num_layers' : 3,
+        'batch_first' : True,
+        'bias' : True,
+        'return_all_layers' : False
+    }
+
     transform = transforms.Compose([
         transforms.ToTensor(), # range [0, 255] -> [0.0,1.0]
         transforms.Normalize(Train_Dataset_Config['mean'], Train_Dataset_Config['std']),
@@ -91,7 +101,20 @@ def main():
     val_dataset_size = len(val_set)
 
 	#Creat the model
-    model = Meso4()
+    model = ConvLSTM(
+        ConvLSTM_Config['channels'],
+        ConvLSTM_Config['hidden_dim'],
+        ConvLSTM_Config['kernel_size'],
+        ConvLSTM_Config['num_layers'],
+        ConvLSTM_Config['batch_first'],
+        ConvLSTM_Config['bias'],
+        ConvLSTM_Config['return_all_layers']
+    )
+    
+    summary(model, input_size = 
+        (batch_size,Train_Dataset_Config['time_depth'],
+        Train_Dataset_Config['cut_size'],
+        Train_Dataset_Config['cut_size']))
     
     if continue_train:
         model.load_state_dict(torch.load(model_path))
@@ -99,7 +122,9 @@ def main():
     if gpu_avi:
         model = model.cuda()
 
-    criterion = nn.CrossEntropyLoss()
+    criterion_CE = nn.CrossEntropyLoss()
+    criterion_Hu = nn.SmoothL1Loss()
+
 	#optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.001)
     optimizer = optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
@@ -127,8 +152,8 @@ def main():
             optimizer.zero_grad()
             outputs = model(image)
             _, preds = torch.max(outputs.data, 1)
-            #print(preds)
-            loss = criterion(outputs, labels)
+            loss = criterion_CE(outputs, labels)
+            #loss = criterion_Hu(preds,labels)
             loss.backward()
             optimizer.step()
             iter_loss = loss.data.item()
@@ -145,13 +170,15 @@ def main():
         #Evaluation
         model.eval()
         with torch.no_grad():
-            for (image, labels) in val_loader:
+            for (image, labels, failflag) in val_loader:
+                print(image.shape)
                 if gpu_avi:
                     image = image.cuda()
                     labels = labels.cuda()
                 outputs = model(image)
                 _, preds = torch.max(outputs.data, 1)
-                loss = criterion(outputs, labels)
+                loss = criterion_CE(outputs, labels)
+                #loss = criterion_Hu(preds,labels)
                 val_loss += loss.data.item()
                 val_corrects += torch.sum(preds == labels.data).to(torch.float32)
             epoch_loss = val_loss / val_dataset_size
@@ -180,7 +207,7 @@ if __name__ == '__main__':
     parse.add_argument('--train_root','-tr',default = '../Celeb-DF-v2')
     parse.add_argument('--train_path', '-tp' , type=str, default = '../Celeb-DF-v2/List_of_training_videos.pkl')
     parse.add_argument('--val_path', '-vp' , type=str, default = '../Celeb-DF-v2/List_of_testing_videos.pkl')
-    parse.add_argument('--batch_size', '-bz', type=int, default=64)
+    parse.add_argument('--batch_size', '-bz', type=int, default=1)
     parse.add_argument('--epoches', '-e', type=int, default='50')
     parse.add_argument('--model_name', '-mn', type=str, default='meso4.pkl')
     parse.add_argument('--continue_train', type=bool, default=False)
